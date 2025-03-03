@@ -1,12 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using DailyRoutines.Abstracts;
 using DailyRoutines.Managers;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
-using Lumina.Excel.Sheets;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace DailyRoutines.Modules;
 
@@ -26,12 +24,16 @@ public unsafe class AutoGysahlGreens : DailyModuleBase
 
     private static bool HasNotifiedInCurrentZone;
 
+    private const uint GysahlGreens = 4868;
+
     static AutoGysahlGreens()
     {
-        ValidTerritory = LuminaCache.Get<TerritoryType>()
-                                    .Where(x => x.TerritoryIntendedUse.RowId == 1)
-                                    .Select(x => (ushort)x.RowId)
-                                    .ToHashSet();
+        ValidTerritory = PresetSheet.Zones
+                                   .Where(x => 
+                                              x.Value.TerritoryIntendedUse.RowId == 1 
+                                              && x.Key != 250)
+                                   .Select(x => (ushort)x.Key)
+                                   .ToHashSet();
     }
 
     public override void Init()
@@ -52,6 +54,9 @@ public unsafe class AutoGysahlGreens : DailyModuleBase
 
         if (ImGui.Checkbox(GetLoc("SendTTS"), ref ModuleConfig.SendTTS))
             SaveConfig(ModuleConfig);
+
+        if (ImGui.Checkbox(GetLoc("AutoGysahlGreens-NotBattleJobUsingGys"), ref ModuleConfig.NotBattleJobUsingGysahl))
+            SaveConfig(ModuleConfig);
     }
 
     private static void OnZoneChanged(ushort zone)
@@ -68,9 +73,14 @@ public unsafe class AutoGysahlGreens : DailyModuleBase
         if (!Throttler.Throttle("AutoGysahlGreens-OnUpdate", 5_000)) return;
         if (DService.ClientState.LocalPlayer is not { IsDead: false }) return;
         if (BetweenAreas || OccupiedInEvent || IsOnMount || !IsScreenReady()) return;
+
+        if (!PresetSheet.ClassJobs.TryGetValue(DService.ClientState.LocalPlayer.ClassJob.RowId,
+                                              out var classJobData)) return;
+        if (!ModuleConfig.NotBattleJobUsingGysahl && classJobData.DohDolJobIndex != -1) return;
+
         if (UIState.Instance()->Buddy.CompanionInfo.TimeLeft > 300) return;
         
-        if (InventoryManager.Instance()->GetInventoryItemCount(4868) <= 3)
+        if (InventoryManager.Instance()->GetInventoryItemCount(GysahlGreens) <= 3)
         {
             if (!HasNotifiedInCurrentZone)
             {
@@ -85,18 +95,20 @@ public unsafe class AutoGysahlGreens : DailyModuleBase
             return;
         }
         
-        UseActionManager.UseActionLocation(ActionType.Item, 4868, 0xE0000000, default, 0xFFFF);
+        UseActionManager.UseActionLocation(ActionType.Item, GysahlGreens, 0xE0000000, default, 0xFFFF);
     }
     
     public override void Uninit()
     {
+        DService.ClientState.TerritoryChanged -= OnZoneChanged;
         OnZoneChanged(0);
     }
 
     private class Config : ModuleConfiguration
     {
-        public bool  SendChat;
-        public bool  SendNotification;
-        public bool  SendTTS;
+        public bool SendChat;
+        public bool SendNotification = true;
+        public bool SendTTS;
+        public bool NotBattleJobUsingGysahl;
     }
 }

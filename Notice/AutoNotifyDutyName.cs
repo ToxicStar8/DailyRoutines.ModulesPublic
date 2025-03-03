@@ -1,5 +1,4 @@
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 
 namespace DailyRoutines.Modules;
 
@@ -34,7 +33,7 @@ public class AutoNotifyDutyName : DailyModuleBase
 
     private static void OnZoneChange(ushort territory)
     {
-        if (!PresetData.Contents.TryGetValue(territory, out var content)) return;
+        if (!PresetSheet.Contents.TryGetValue(territory, out var content)) return;
 
         var levelText = content.ClassJobLevelRequired == content.ClassJobLevelSync ||
                         content.ClassJobLevelRequired > content.ClassJobLevelSync

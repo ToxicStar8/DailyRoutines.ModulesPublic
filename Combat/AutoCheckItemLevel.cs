@@ -1,5 +1,4 @@
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using FFXIVClientStructs.FFXIV.Client.Game;
@@ -34,7 +33,7 @@ public unsafe class AutoCheckItemLevel : DailyModuleBase
         TaskHelper.Abort();
         
         if (DService.ClientState.IsPvP) return;
-        if (!PresetData.TryGetContent(zone, out var content) || content.PvP ||
+        if (!PresetSheet.TryGetContent(zone, out var content) || content.PvP ||
             !ValidContentJobCategories.Contains(content.AcceptClassJobCategory.RowId)) return;
         
         TaskHelper.Enqueue(() => !BetweenAreas, "WaitForEnteringDuty", null, null, 2);
@@ -106,7 +105,7 @@ public unsafe class AutoCheckItemLevel : DailyModuleBase
 
                 var avgItemLevel = totalIL / itemSlotAmount;
 
-                var content = PresetData.Contents[DService.ClientState.TerritoryType];
+                var content = PresetSheet.Contents[DService.ClientState.TerritoryType];
                 var ssb = new SeStringBuilder();
                 ssb.AddUiForeground(25);
                 ssb.Add(new PlayerPayload(partyMember.Name.TextValue, partyMember.GameObject.ToBCStruct()->HomeWorld));

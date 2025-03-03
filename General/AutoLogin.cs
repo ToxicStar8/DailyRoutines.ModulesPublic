@@ -1,7 +1,6 @@
 using ClickLib;
 using ClickLib.Clicks;
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using DailyRoutines.Managers;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
@@ -95,7 +94,7 @@ public unsafe class AutoLogin : DailyModuleBase
                     ImGui.SameLine();
                     if (ImGui.SmallButton(Lang.Get("AutoLogin-CurrentWorld")))
                     {
-                        if (PresetData.Worlds.TryGetValue(AgentLobby.Instance()->LobbyData.CurrentWorldId, out var world))
+                        if (PresetSheet.Worlds.TryGetValue(AgentLobby.Instance()->LobbyData.CurrentWorldId, out var world))
                             SelectedWorld = world;
                     }
 
@@ -243,7 +242,7 @@ public unsafe class AutoLogin : DailyModuleBase
                 ManualCharaIndex = charaIndex0;
                 break;
             case 2:
-                var world1 = PresetData.Worlds.FirstOrDefault(x => x.Value.Name.ExtractText().Contains(parts[0])).Key;
+                var world1 = PresetSheet.Worlds.FirstOrDefault(x => x.Value.Name.ExtractText().Contains(parts[0])).Key;
                 if (world1 == 0) return;
                 if (!int.TryParse(parts[1], out var charaIndex1) || charaIndex1 < 0 || charaIndex1 > 8) return;
 

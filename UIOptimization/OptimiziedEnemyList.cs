@@ -6,7 +6,9 @@ using DailyRoutines.Abstracts;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Objects.Types;
+using Dalamud.Interface;
 using Dalamud.Interface.Components;
+using Dalamud.Interface.Utility.Raii;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
@@ -25,6 +27,8 @@ public unsafe class OptimiziedEnemyList : DailyModuleBase
     };
 
     private static Config ModuleConfig = null!;
+
+    private static string CastInfoTargetBlacklistInput = string.Empty;
 
     public override void Init()
     {
@@ -142,6 +146,57 @@ public unsafe class OptimiziedEnemyList : DailyModuleBase
             ModuleConfig.Save(this);
             UpdateTextNodes();
         }
+        
+        ImGui.Spacing();
+        
+        ImGui.AlignTextToFramePadding();
+        ImGui.TextColored(LightSkyBlue, GetLoc("OptimiziedEnemyList-CastInfoDisplayTargetBlacklist"));
+        ImGuiOm.HelpMarker(GetLoc("OptimiziedEnemyList-CastInfoDisplayTargetBlacklistHelp"));
+        
+        ImGui.SameLine();
+        if (ImGuiOm.ButtonIconWithText(FontAwesomeIcon.Plus, GetLoc("Add")))
+            ImGui.OpenPopup("CastInfoTargetBlacklistPopup");
+
+        using (var popup = ImRaii.Popup("CastInfoTargetBlacklistPopup"))
+        {
+            if (popup)
+            {
+                ImGui.InputText("###CastInfoTargetBlacklistInput", ref CastInfoTargetBlacklistInput, 512);
+                
+                ImGui.SameLine();
+                using (ImRaii.Disabled(string.IsNullOrWhiteSpace(CastInfoTargetBlacklistInput) || 
+                                       ModuleConfig.CastInfoTargetBlacklist.Contains(CastInfoTargetBlacklistInput)))
+                {
+                    if (ImGui.Button(GetLoc("Confirm")))
+                    {
+                        ModuleConfig.CastInfoTargetBlacklist.Add(CastInfoTargetBlacklistInput);
+                        ModuleConfig.Save(this);
+                        
+                        ImGui.CloseCurrentPopup();
+                    }
+                }
+            }
+        }
+
+        var counter = 1;
+        foreach (var blacklist in ModuleConfig.CastInfoTargetBlacklist)
+        {
+            using (ImRaii.PushId($"CastInfoTargetBlacklist-{blacklist}"))
+            {
+                if (ImGui.Button(GetLoc("Delete")))
+                {
+                    ModuleConfig.CastInfoTargetBlacklist.Remove(blacklist);
+                    ModuleConfig.Save(this);
+                    
+                    break;
+                }
+                
+                ImGui.SameLine();
+                ImGui.Text($"{counter}. {blacklist}");
+
+                counter++;
+            }
+        }
     }
 
     private void OnAddon(AddonEvent type, AddonArgs args)
@@ -207,7 +262,8 @@ public unsafe class OptimiziedEnemyList : DailyModuleBase
                 var castBackgroundNode = componentNode->Component->UldManager.SearchNodeById(5);
                 if (castBackgroundNode != null) castBackgroundNode->SetAlpha(0);
             }
-            
+
+            var targetName = SanitizeSeIcon(targetNameTextNode->NodeText.ExtractText());
             targetNameTextNode->GetTextDrawSize(castWidth, castHeight);
             
             textNode->TextColor = ModuleConfig.UseCustomizeTextColor
@@ -221,9 +277,9 @@ public unsafe class OptimiziedEnemyList : DailyModuleBase
                                             : castTextNode->BackgroundColor;
             
             textNode->FontSize = ModuleConfig.FontSize;
-            textNode->SetText(bc.IsCasting && bc.CurrentCastTime != bc.TotalCastTime
+            textNode->SetText(bc.IsCasting && bc.CurrentCastTime != bc.TotalCastTime && !ModuleConfig.CastInfoTargetBlacklist.Contains(targetName)
                                   ? $"{GetCastInfoText((ActionType)bc.CastActionType, bc.CastActionId)}: {bc.CurrentCastTime:F1}/{bc.TotalCastTime:F1}"
-                                  : GetGeneralInfoText((int)((float)bc.CurrentHp / bc.MaxHp * 100), enmity));
+                                  : GetGeneralInfoText((float)bc.CurrentHp / bc.MaxHp * 100, enmity));
             
             textNode->GetTextDrawSize(infoWidth, infoHeight);
             textNode->SetPositionFloat(Math.Max(90f, *castWidth + 28) + ModuleConfig.TextOffset.X,
@@ -279,10 +335,10 @@ public unsafe class OptimiziedEnemyList : DailyModuleBase
         }
     }
 
-    private static string GetGeneralInfoText(int percentage, int enmity) =>
+    private static string GetGeneralInfoText(float percentage, int enmity) =>
         ModuleConfig.UseCustomizeText
-            ? string.Format(ModuleConfig.CustomizeTextPattern, percentage, enmity)
-            : $"{LuminaCache.GetRow<Addon>(232)!.Value.Text.ExtractText()}: {percentage}% / {LuminaCache.GetRow<Addon>(721)!.Value.Text.ExtractText()}: {enmity}%";
+            ? string.Format(ModuleConfig.CustomizeTextPattern, percentage.ToString("F1"), enmity)
+            : $"{LuminaCache.GetRow<Addon>(232)!.Value.Text.ExtractText()}: {percentage:F1}% / {LuminaCache.GetRow<Addon>(721)!.Value.Text.ExtractText()}: {enmity}%";
 
     private static string GetCastInfoText(ActionType type, uint actionID)
     {
@@ -364,5 +420,7 @@ public unsafe class OptimiziedEnemyList : DailyModuleBase
         public Vector4 BackgroundColor = new(0, 0, 0, 0);
 
         public byte FontSize = 10;
+
+        public HashSet<string> CastInfoTargetBlacklist = [];
     }
 }

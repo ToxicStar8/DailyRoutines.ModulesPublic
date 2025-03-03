@@ -27,7 +27,7 @@ public class AutoMovePetPosition : DailyModuleBase
 
     static AutoMovePetPosition()
     {
-        ValidContents = PresetData.Contents
+        ValidContents = PresetSheet.Contents
                                   .Where(pair => pair.Value.ContentMemberType.RowId == 3) // 只要 8 人本
                                   .ToDictionary(pair => pair.Key, pair => pair.Value);
     }

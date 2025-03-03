@@ -94,7 +94,7 @@ public class FriendlistTeleporter : DailyModuleBase
         {
             try
             {
-                var targetWorld = PresetData.Worlds[targetWorldID].Name.ExtractText();
+                var targetWorld = PresetSheet.Worlds[targetWorldID].Name.ExtractText();
                 ChatHelper.Instance.SendMessage($"/pdr worldtravel {targetWorld}");
             }
             catch

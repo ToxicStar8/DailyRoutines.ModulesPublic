@@ -7,6 +7,7 @@ using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Text.SeStringHandling;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
+using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
 
@@ -199,9 +200,7 @@ public unsafe class ShopDisplayRealItemIcon : DailyModuleBase
             switch (currentTab)
             {
                 case 0:
-                    var normalItem = ShopEventHandler.AgentProxy.Instance()->Handler->Items[i];
-                    isItemHQ = normalItem.IsHQ;
-                    itemID   = normalItem.ItemId;
+                    itemID   = addon->AtkValues[441 + i].UInt;
                     break;
                 case 1:
                     var buybackItem = ShopEventHandler.AgentProxy.Instance()->Handler->Buyback[i];

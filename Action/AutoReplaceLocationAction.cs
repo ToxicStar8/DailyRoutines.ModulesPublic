@@ -35,6 +35,7 @@ public class AutoReplaceLocationAction : DailyModuleBase
     // MapID - Markers
     private static readonly Dictionary<uint, Dictionary<MapMarker, Vector2>> ZoneMapMarkers = [];
 
+    private static bool   IsNeedToReplace;
     private static string ContentSearchInput = string.Empty;
 
     static AutoReplaceLocationAction()
@@ -284,7 +285,12 @@ public class AutoReplaceLocationAction : DailyModuleBase
         ref ulong targetID, ref Vector3 location, ref uint extraParam)
     {
         if (type != ActionType.Action) return;
-        if (!ModuleConfig.EnabledActions.TryGetValue(actionID, out var isEnabled) || !isEnabled) return;
+        if (!ModuleConfig.EnabledActions.TryGetValue(actionID, out var isEnabled) || (!isEnabled && !IsNeedToReplace))
+        {
+            IsNeedToReplace = false;
+            return;
+        }
+        IsNeedToReplace = false;
 
         if (ModuleConfig.BlacklistContent.Contains(DService.ClientState.TerritoryType)) return;
         if (!ZoneMapMarkers.TryGetValue(DService.ClientState.MapId, out var markers)) markers = [];
@@ -294,9 +300,7 @@ public class AutoReplaceLocationAction : DailyModuleBase
             HandleMapLocation(markers, ref modifiedLocation) ||
             HandlePresetCenterLocation(ref modifiedLocation))
         {
-            isPrevented = true;
-
-            UseActionManager.UseActionLocation(type, actionID, targetID, modifiedLocation, extraParam);
+            location = modifiedLocation;
             NotifyLocationRedirect(modifiedLocation);
         }
     }
@@ -306,7 +310,11 @@ public class AutoReplaceLocationAction : DailyModuleBase
         ref int param2, ref int param3, ref int param4)
     {
         if (command != ExecuteCommandComplexFlag.PetAction || param1 != 3) return;
-        if (!ModuleConfig.EnabledPetActions.TryGetValue(3, out var isEnabled) || !isEnabled) return;
+        if (!ModuleConfig.EnabledPetActions.TryGetValue(3, out var isEnabled) || (!isEnabled && !IsNeedToReplace)) {
+            IsNeedToReplace = false;
+            return;
+        }
+        IsNeedToReplace = false;
 
         if (ModuleConfig.BlacklistContent.Contains(DService.ClientState.TerritoryType)) return;
         if (!ZoneMapMarkers.TryGetValue(DService.ClientState.MapId, out var markers)) markers = [];
@@ -332,7 +340,8 @@ public class AutoReplaceLocationAction : DailyModuleBase
 
         var parsedArg = MemoryHelper.ReadSeStringNullTerminated(arg).TextValue;
         if (!parsedArg.Equals("<center>")) return original;
-
+        
+        IsNeedToReplace = true;
         return (nint)Control.GetLocalPlayer();
     }
 

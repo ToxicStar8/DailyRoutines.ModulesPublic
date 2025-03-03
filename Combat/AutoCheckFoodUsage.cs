@@ -1,17 +1,16 @@
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using DailyRoutines.Managers;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Hooking;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility.Raii;
 using FFXIVClientStructs.FFXIV.Client.Game;
-using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Dalamud.Game.Text.SeStringHandling;
 
 namespace DailyRoutines.Modules;
 
@@ -59,7 +58,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
 
     public override void ConfigUI()
     {
-        ImGui.TextColored(LightSkyBlue, $"{Lang.Get("AutoCheckFoodUsage-Checkpoint")}:");
+        ImGui.TextColored(LightSkyBlue, $"{GetLoc("AutoCheckFoodUsage-Checkpoint")}:");
 
         using (ImRaii.PushIndent())
         {
@@ -82,11 +81,11 @@ public class AutoCheckFoodUsage : DailyModuleBase
                 {
                     ImGui.AlignTextToFramePadding();
                     ImGui.TextColored(LightSkyBlue,
-                                      $"{Lang.Get("AutoCheckFoodUsage-WhenConditionBegin")}:");
+                                      $"{GetLoc("AutoCheckFoodUsage-WhenConditionBegin")}:");
 
                     ImGui.SameLine();
                     ImGui.SetNextItemWidth(200f * GlobalFontScale);
-                    using (var combo = ImRaii.Combo("###ConditionBeginCombo", Lang.Get(
+                    using (var combo = ImRaii.Combo("###ConditionBeginCombo", GetLoc(
                                                         "AutoCheckFoodUsage-SelectedAmount",
                                                         ModuleConfig.ConditionStart.Count),
                                                     ImGuiComboFlags.HeightLarge))
@@ -96,7 +95,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
                             if (ImGui.IsWindowAppearing()) ConditionSearch = string.Empty;
 
                             ImGui.SetNextItemWidth(-1f);
-                            ImGui.InputTextWithHint("###ConditionBeginSearch", Lang.Get("PleaseSearch"),
+                            ImGui.InputTextWithHint("###ConditionBeginSearch", GetLoc("PleaseSearch"),
                                                     ref ConditionSearch, 128);
                             ImGui.Separator();
 
@@ -120,11 +119,11 @@ public class AutoCheckFoodUsage : DailyModuleBase
 
                     ImGui.AlignTextToFramePadding();
                     ImGui.TextColored(LightSkyBlue,
-                                      $"{Lang.Get("AutoCheckFoodUsage-WhenConditionEnd")}:");
+                                      $"{GetLoc("AutoCheckFoodUsage-WhenConditionEnd")}:");
 
                     ImGui.SameLine();
                     ImGui.SetNextItemWidth(200f * GlobalFontScale);
-                    using (var combo = ImRaii.Combo("###ConditionEndCombo", Lang.Get(
+                    using (var combo = ImRaii.Combo("###ConditionEndCombo", GetLoc(
                                                         "AutoCheckFoodUsage-SelectedAmount",
                                                         ModuleConfig.ConditionEnd.Count), ImGuiComboFlags.HeightLarge))
                     {
@@ -133,7 +132,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
                             if (ImGui.IsWindowAppearing()) ConditionSearch = string.Empty;
 
                             ImGui.SetNextItemWidth(-1f);
-                            ImGui.InputTextWithHint("###ConditionEndSearch", Lang.Get("PleaseSearch"),
+                            ImGui.InputTextWithHint("###ConditionEndSearch", GetLoc("PleaseSearch"),
                                                     ref ConditionSearch, 128);
                             ImGui.Separator();
 
@@ -162,22 +161,22 @@ public class AutoCheckFoodUsage : DailyModuleBase
             ScaledDummy(2f);
         }
 
-        ImGui.TextColored(LightSkyBlue, $"{Lang.Get("Settings")}:");
+        ImGui.TextColored(LightSkyBlue, $"{GetLoc("Settings")}:");
 
         using (ImRaii.PushIndent())
         {
             ImGui.Dummy(Vector2.One);
 
             ImGui.SetNextItemWidth(50f * GlobalFontScale);
-            ImGui.InputInt(Lang.Get("AutoCheckFoodUsage-RefreshThreshold"), ref ModuleConfig.RefreshThreshold, 0, 0);
+            ImGui.InputInt(GetLoc("AutoCheckFoodUsage-RefreshThreshold"), ref ModuleConfig.RefreshThreshold, 0, 0);
             if (ImGui.IsItemDeactivatedAfterEdit())
                 SaveConfig(ModuleConfig);
         
             ImGui.SameLine();
-            if (ImGui.Checkbox(Lang.Get("SendNotification"), ref ModuleConfig.SendNotice))
+            if (ImGui.Checkbox(GetLoc("SendChat"), ref ModuleConfig.SendChat))
                 SaveConfig(ModuleConfig);
 
-            ImGuiOm.HelpMarker(Lang.Get("AutoCheckFoodUsage-RefreshThresholdHelp"));
+            ImGuiOm.HelpMarker(GetLoc("AutoCheckFoodUsage-RefreshThresholdHelp"));
         }
         
         var       tableSize = (ImGui.GetContentRegionAvail() - ScaledVector2(100f)) with { Y = 0 };
@@ -198,7 +197,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
             if (popup)
             {
                 ImGui.TextColored(LightSkyBlue,
-                                  $"{Lang.Get("AutoCheckFoodUsage-AddNewPreset")}:");
+                                  $"{GetLoc("AutoCheckFoodUsage-AddNewPreset")}:");
 
                 using (ImRaii.PushIndent())
                 {
@@ -206,11 +205,11 @@ public class AutoCheckFoodUsage : DailyModuleBase
 
                     ImGui.SameLine();
                     ImGui.AlignTextToFramePadding();
-                    ImGui.Text($"{Lang.Get("Food")}:");
+                    ImGui.Text($"{GetLoc("Food")}:");
 
                     ImGui.SameLine();
                     ImGui.SetNextItemWidth(200f * GlobalFontScale);
-                    SingleSelectCombo(PresetData.Food, ref SelectedItem, ref SelectItemSearch,
+                    SingleSelectCombo(PresetSheet.Food, ref SelectedItem, ref SelectItemSearch,
                                       x => $"{x.Name.ExtractText()} ({x.RowId})",
                                       [new("物品", ImGuiTableColumnFlags.WidthStretch, 0)],
                                       [
@@ -233,7 +232,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
                     ImGui.SameLine();
                     using (ImRaii.Disabled(SelectedItem == 0))
                     {
-                        if (ImGui.Button(Lang.Get("Add")))
+                        if (ImGui.Button(GetLoc("Add")))
                         {
                             var preset = new FoodUsagePreset(SelectedItem, SelectItemIsHQ);
                             if (ModuleConfig.Presets.Contains(preset)) return;
@@ -247,13 +246,13 @@ public class AutoCheckFoodUsage : DailyModuleBase
         }
 
         ImGui.TableNextColumn();
-        ImGui.Text(Lang.Get("Food"));
+        ImGui.Text(GetLoc("Food"));
 
         ImGui.TableNextColumn();
-        ImGui.Text(Lang.Get("AutoCheckFoodUsage-ZoneRestrictions"));
+        ImGui.Text(GetLoc("AutoCheckFoodUsage-ZoneRestrictions"));
 
         ImGui.TableNextColumn();
-        ImGui.Text(Lang.Get("AutoCheckFoodUsage-JobRestrictions"));
+        ImGui.Text(GetLoc("AutoCheckFoodUsage-JobRestrictions"));
 
         foreach (var preset in ModuleConfig.Presets.ToArray())
         {
@@ -279,13 +278,13 @@ public class AutoCheckFoodUsage : DailyModuleBase
                 if (context)
                 {
                     if (ImGui.MenuItem(
-                            $"{Lang.Get("AutoCheckFoodUsage-ChangeTo")} {(preset.IsHQ ? "NQ" : "HQ")}"))
+                            $"{GetLoc("AutoCheckFoodUsage-ChangeTo")} {(preset.IsHQ ? "NQ" : "HQ")}"))
                     {
                         preset.IsHQ ^= true;
                         SaveConfig(ModuleConfig);
                     }
 
-                    if (ImGui.MenuItem(Lang.Get("Delete")))
+                    if (ImGui.MenuItem(GetLoc("Delete")))
                     {
                         ModuleConfig.Presets.Remove(preset);
                         SaveConfig(ModuleConfig);
@@ -298,7 +297,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
             ImGui.SetNextItemWidth(-1f);
             using (var id0 = ImRaii.PushId("ZonesSelectCombo"))
             {
-                if (MultiSelectCombo(PresetData.Zones, ref zones, ref ZoneSearch,
+                if (MultiSelectCombo(PresetSheet.Zones, ref zones, ref ZoneSearch,
                                      [
                                          new("区域", ImGuiTableColumnFlags.WidthStretch, 0),
                                          new("副本", ImGuiTableColumnFlags.WidthStretch, 0)
@@ -333,7 +332,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
                     SaveConfig(ModuleConfig);
                 }
 
-                ImGuiOm.TooltipHover(Lang.Get("AutoCheckFoodUsage-NoZoneSelectHelp"));
+                ImGuiOm.TooltipHover(GetLoc("AutoCheckFoodUsage-NoZoneSelectHelp"));
             }
 
             ImGui.TableNextColumn();
@@ -347,7 +346,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
         }
     }
 
-    private bool? EnqueueFoodRefresh(int zone = -1)
+    private bool? EnqueueFoodRefresh()
     {
         if (!IsValidState()) return false;
         if (!IsCooldownElapsed())
@@ -356,7 +355,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
             return true;
         }
 
-        var validPresets = GetValidPresets(zone);
+        var validPresets = GetValidPresets();
         if (validPresets.Count == 0)
         {
             TaskHelper.Abort();
@@ -412,9 +411,7 @@ public class AutoCheckFoodUsage : DailyModuleBase
             itemFoodId                 == ToFoodRowID(itemID)             &&
             remainingTime.TotalMinutes >= 25)
         {
-            Chat(Lang.Get("AutoCheckFoodUsage-NoticeMessage",
-                                                   LuminaCache.GetRow<Item>(itemID)!.Value.Name.ExtractText(),
-                                                   isHQ ? "HQ" : "NQ"));
+            Chat(GetSLoc("AutoCheckFoodUsage-NoticeMessage", new SeStringBuilder().AddItemLink(itemID, isHQ)));
             return true;
         }
 
@@ -428,10 +425,10 @@ public class AutoCheckFoodUsage : DailyModuleBase
         itemFoodRowID = 0;
         remainingTime = TimeSpan.Zero;
 
-        if (DService.ClientState.LocalPlayer == null) return false;
+        if (DService.ClientState.LocalPlayer is not { } localPlayer) return false;
 
-        var statusManager = ((Character*)DService.ClientState.LocalPlayer.Address)->GetStatusManager();
-        var statusIndex = statusManager->GetStatusIndex(48);
+        var statusManager = localPlayer.ToBCStruct()->GetStatusManager();
+        var statusIndex   = statusManager->GetStatusIndex(48);
         if (statusIndex == -1) return false;
 
         var status = statusManager->Status[statusIndex];
@@ -443,56 +440,69 @@ public class AutoCheckFoodUsage : DailyModuleBase
     private nint CountdownInitDetour(nint a1, nint a2)
     {
         var original = CountdownInitHook.Original(a1, a2);
-        if (ModuleConfig.EnabledCheckpoints[FoodCheckpoint.倒计时开始时] && !TaskHelper.IsBusy &&
-            !LuminaCache.GetRow<TerritoryType>(DService.ClientState.TerritoryType)!.Value.IsPvpZone)
+        
+        if (ModuleConfig.EnabledCheckpoints[FoodCheckpoint.倒计时开始时] && !GameMain.IsInPvPArea())
+        {
+            TaskHelper.Abort();
             TaskHelper.Enqueue(() => EnqueueFoodRefresh());
+        }
+        
         return original;
     }
 
     private void OnZoneChanged(ushort zone)
     {
-        if (!ModuleConfig.EnabledCheckpoints[FoodCheckpoint.区域切换时] || TaskHelper.IsBusy ||
-            LuminaCache.GetRow<TerritoryType>(zone)!.Value.IsPvpZone) return;
+        if (!ModuleConfig.EnabledCheckpoints[FoodCheckpoint.区域切换时] || GameMain.IsInPvPArea()) return;
 
-        TaskHelper.Enqueue(() => EnqueueFoodRefresh(zone));
+        TaskHelper.Abort();
+        TaskHelper.Enqueue(() => EnqueueFoodRefresh());
     }
 
     private void OnConditionChanged(ConditionFlag flag, bool value)
     {
-        if (!ModuleConfig.EnabledCheckpoints[FoodCheckpoint.条件变更时] || TaskHelper.IsBusy ||
+        if (!ModuleConfig.EnabledCheckpoints[FoodCheckpoint.条件变更时] || GameMain.IsInPvPArea() ||
             ((!value || !ModuleConfig.ConditionStart.Contains(flag)) &&
-             (value  || !ModuleConfig.ConditionEnd.Contains(flag))) ||
-            LuminaCache.GetRow<TerritoryType>(DService.ClientState.TerritoryType)!.Value.IsPvpZone) return;
+             (value  || !ModuleConfig.ConditionEnd.Contains(flag))))
+            return;
+        
+        TaskHelper.Abort();
         TaskHelper.Enqueue(() => EnqueueFoodRefresh());
     }
-
+    
     public override void Uninit()
     {
         DService.Condition.ConditionChange -= OnConditionChanged;
         DService.ClientState.TerritoryChanged -= OnZoneChanged;
         base.Uninit();
     }
-
+    
     private static unsafe bool IsValidState() =>
-        !BetweenAreas                     &&
-        !OccupiedInEvent                  &&
-        !IsCasting                        &&
+        !BetweenAreas                            &&
+        !OccupiedInEvent                         &&
+        !IsCasting                               &&
         DService.ClientState.LocalPlayer != null &&
-        IsScreenReady()                         &&
+        IsScreenReady()                          &&
         ActionManager.Instance()->GetActionStatus(ActionType.GeneralAction, 2) == 0;
     
-    private static bool IsCooldownElapsed() => (DateTime.Now - LastFoodUsageTime).TotalSeconds >= FoodUsageCooldownSeconds;
+    private static bool IsCooldownElapsed() 
+        => (DateTime.Now - LastFoodUsageTime).TotalSeconds >= FoodUsageCooldownSeconds;
+    
+    private static uint ToFoodRowID(uint id) 
+        => LuminaCache.GetRow<ItemFood>(LuminaCache.GetRow<Item>(id)!.Value.ItemAction.Value.Data[1])?.RowId ?? 0;
 
-    private static unsafe List<FoodUsagePreset> GetValidPresets(int zone)
+    private static unsafe List<FoodUsagePreset> GetValidPresets()
     {
         var instance = InventoryManager.Instance();
+        var zone     = DService.ClientState.TerritoryType;
+        if (instance == null || zone == 0) return [];
+        
         return ModuleConfig.Presets
-                           .Where(x => x.Enabled && 
-                                       (zone == -1 || x.Zones.Count == 0 || x.Zones.Contains((uint)zone)) &&
+                           .Where(x => x.Enabled                                            && 
+                                       (x.Zones.Count == 0 || x.Zones.Contains(zone)) &&
                                        (x.ClassJobs.Count == 0 || 
                                         x.ClassJobs.Contains(DService.ClientState.LocalPlayer.ClassJob.RowId)) &&
                                        instance->GetInventoryItemCount(x.ItemID, x.IsHQ) > 0)
-                           .OrderByDescending(x => x.Zones.Contains((uint)zone))
+                           .OrderByDescending(x => x.Zones.Contains(zone))
                            .ToList();
     }
 
@@ -502,31 +512,40 @@ public class AutoCheckFoodUsage : DailyModuleBase
 
     public class FoodUsagePreset : IEquatable<FoodUsagePreset>
     {
-        public uint ItemID { get; set; }
-        public bool IsHQ { get; set; } = true;
-        public HashSet<uint> Zones { get; set; } = [];
+        public uint          ItemID    { get; set; }
+        public bool          IsHQ      { get; set; } = true;
+        public HashSet<uint> Zones     { get; set; } = [];
         public HashSet<uint> ClassJobs { get; set; } = [];
-        public bool Enabled { get; set; } = true;
+        public bool          Enabled   { get; set; } = true;
 
         public FoodUsagePreset() { }
         public FoodUsagePreset(uint itemID) => ItemID = itemID;
         public FoodUsagePreset(uint itemID, bool isHQ) : this(itemID) => IsHQ = isHQ;
 
-        public override bool Equals(object? obj) => Equals(obj as FoodUsagePreset);
-        public bool Equals(FoodUsagePreset? other) => other != null && ItemID == other.ItemID && IsHQ == other.IsHQ;
-        public override int GetHashCode() => HashCode.Combine(ItemID, IsHQ);
-        public static bool operator ==(FoodUsagePreset? left, FoodUsagePreset? right) => EqualityComparer<FoodUsagePreset>.Default.Equals(left, right);
-        public static bool operator !=(FoodUsagePreset? left, FoodUsagePreset? right) => !(left == right);
+        public override bool Equals(object? obj) 
+            => Equals(obj as FoodUsagePreset);
+        
+        public bool Equals(FoodUsagePreset? other) 
+            => other != null && ItemID == other.ItemID && IsHQ == other.IsHQ;
+        
+        public override int GetHashCode() 
+            => HashCode.Combine(ItemID, IsHQ);
+
+        public static bool operator ==(FoodUsagePreset? left, FoodUsagePreset? right) =>
+            EqualityComparer<FoodUsagePreset>.Default.Equals(left, right);
+
+        public static bool operator !=(FoodUsagePreset? left, FoodUsagePreset? right) 
+            => !(left == right);
     }
 
     private class Config : ModuleConfiguration
     {
-        public List<FoodUsagePreset> Presets = [];
+        public List<FoodUsagePreset>            Presets            = [];
         public Dictionary<FoodCheckpoint, bool> EnabledCheckpoints = [];
-        public HashSet<ConditionFlag> ConditionStart = [];
-        public HashSet<ConditionFlag> ConditionEnd = [];
-        public int RefreshThreshold = 600; // 秒
-        public bool SendNotice = true;
+        public HashSet<ConditionFlag>           ConditionStart     = [];
+        public HashSet<ConditionFlag>           ConditionEnd       = [];
+        public int                              RefreshThreshold   = 600; // 秒
+        public bool                             SendChat           = true;
     }
 
     private enum FoodCheckpoint
@@ -535,6 +554,4 @@ public class AutoCheckFoodUsage : DailyModuleBase
         倒计时开始时,
         条件变更时,
     }
-
-    private static uint ToFoodRowID(uint id) => LuminaCache.GetRow<ItemFood>(LuminaCache.GetRow<Item>(id)!.Value.ItemAction.Value.Data[1])?.RowId ?? 0;
 }

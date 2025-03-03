@@ -13,6 +13,7 @@ using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Party;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Interface.Utility.Raii;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
@@ -236,7 +237,7 @@ public class ASTHelper : DailyModuleBase
         ref bool  isPrevented, ref ActionType type,     ref uint actionID,
         ref ulong targetID,    ref Vector3    location, ref uint extraParam)
     {
-        if (type != ActionType.Action || DService.PartyList.Length == 0) return;
+        if (type != ActionType.Action || DService.ClientState.IsPvP || DService.PartyList.Length == 0) return;
 
         // auto play card
         if (actionID is (37023 or 37026) && ModuleConfig.AutoPlayCard != AutoPlayCardStatus.Disable)
@@ -281,8 +282,9 @@ public class ASTHelper : DailyModuleBase
         // easy heal
         if (ModuleConfig.EasyHeal == EasyHealStatus.Enable && TargetHealActions.Contains(actionID))
         {
-            var partyMemberIds = DService.PartyList.Select(m => m.ObjectId).ToHashSet();
-            if (!partyMemberIds.Contains((uint)targetID))
+            // replace target when target is non-specific or target is battle npc
+            var currentTarget = DService.ObjectTable.SearchById(targetID);
+            if (currentTarget is IBattleNpc || targetID == UnspecificTargetId)
             {
                 // find target with the lowest HP ratio within range and satisfy threshold
                 targetID = TargetNeedHeal();
@@ -364,7 +366,7 @@ public class ASTHelper : DailyModuleBase
         // party member changed?
         try
         {
-            if (DService.PartyList.Length is not 0)
+            if (DService.PartyList.Length is not 0 && DService.ClientState.IsPvP is false)
             {
                 // need to update candidates?
                 var ids = DService.PartyList.Select(m => m.ObjectId).ToHashSet();
@@ -440,7 +442,7 @@ public class ASTHelper : DailyModuleBase
 
         // find card candidates
         var partyList = DService.PartyList; // role [1 tank, 2 melee, 3 range, 4 healer]
-        if (partyList.Length is 0 || DService.ClientState.LocalPlayer.ClassJob.Value.Abbreviation != "AST" || ModuleConfig.AutoPlayCard == AutoPlayCardStatus.Disable)
+        if (partyList.Length is 0 || DService.ClientState.LocalPlayer.ClassJob.Value.Abbreviation != "AST" || ModuleConfig.AutoPlayCard == AutoPlayCardStatus.Disable || DService.ClientState.IsPvP)
             return;
 
         // advance fallback when no valid zone id or invalid key

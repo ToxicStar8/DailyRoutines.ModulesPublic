@@ -4,7 +4,6 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using DailyRoutines.Managers;
 using DailyRoutines.Windows;
 using Dalamud.Interface.Textures;
@@ -131,7 +130,7 @@ public class AutoShowDutyGuide : DailyModuleBase
 
     private void OnZoneChange(ushort territory)
     {
-        if (!PresetData.Contents.TryGetValue(territory, out var content))
+        if (!PresetSheet.Contents.TryGetValue(territory, out var content))
         {
             CurrentDuty = 0;
             GuideText.Clear();

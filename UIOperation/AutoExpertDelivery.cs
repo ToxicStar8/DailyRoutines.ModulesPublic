@@ -169,7 +169,7 @@ public unsafe class AutoExpertDelivery : DailyModuleBase
 
     private void EnqueueDelivery()
     {
-        foreach (var item in ExpertDeliveryItem.Parse().Where(x => x.GetIndex() != -1))
+        foreach (var item in ExpertDeliveryItem.Parse().Where(x => x.GetIndex() != -1 && !x.IsNeedToSkip()))
         {
             TaskHelper.Enqueue(() =>
             {

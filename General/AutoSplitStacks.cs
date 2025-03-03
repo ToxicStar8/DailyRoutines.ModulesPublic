@@ -49,6 +49,7 @@ public unsafe class AutoSplitStacks : DailyModuleBase
 
     public override void Init()
     {
+        TaskHelper   = new();
         ModuleConfig = LoadConfig<Config>() ?? new();
 
         ItemSearcher ??= new(LuminaCache.Get<Item>()
@@ -58,16 +59,11 @@ public unsafe class AutoSplitStacks : DailyModuleBase
                                         .GroupBy(x => x.Name.ExtractText())
                                         .Select(x => x.First()),
                              [x => x.Name.ExtractText(), x => x.RowId.ToString()], x => x.Name.ExtractText());
+        
+        SplitOverlay       =  new(this);
+        SplitOverlay.Flags |= ImGuiWindowFlags.NoBackground;
 
-        TaskHelper         ??= new() { AbortOnTimeout = true };
-        SplitOverlay       ??= new(this);
-        SplitOverlay.Flags |=  ImGuiWindowFlags.NoBackground;
-
-        CommandManager.AddCommand(Command, new(OnCommand)
-        {
-            HelpMessage = Lang.Get("AutoSplitStacks-CommandHelp"),
-        });
-
+        CommandManager.AddCommand(Command, new(OnCommand) { HelpMessage = GetLoc("AutoSplitStacks-CommandHelp") });
         DService.ContextMenu.OnMenuOpened += OnMenuOpened;
     }
 
@@ -388,6 +384,12 @@ public unsafe class AutoSplitStacks : DailyModuleBase
 
     public override void Uninit()
     {
+        if (SplitOverlay != null)
+        {
+            WindowManager.RemoveWindow(SplitOverlay);
+            SplitOverlay = null;
+        }
+        
         CommandManager.RemoveCommand(Command);
         DService.ContextMenu.OnMenuOpened -= OnMenuOpened;
 

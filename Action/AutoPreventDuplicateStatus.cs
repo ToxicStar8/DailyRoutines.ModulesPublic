@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using DailyRoutines.Managers;
 using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Interface.Utility.Raii;
@@ -353,11 +352,11 @@ public unsafe class AutoPreventDuplicateStatus : DailyModuleBase
     private sealed record DuplicateStatusInfo(uint StatusID, DetectType DetectType, bool isReverse = false)
     {
         private bool IsPermanent => 
-            PresetData.Statuses.TryGetValue(StatusID, out var statusInfo) && statusInfo.IsPermanent;
+            PresetSheet.Statuses.TryGetValue(StatusID, out var statusInfo) && statusInfo.IsPermanent;
 
-        public IDalamudTextureWrap? GetIcon() => !PresetData.Statuses.TryGetValue(StatusID, out var rowData) ? null : DService.Texture.GetFromGameIcon(new(rowData.Icon)).GetWrapOrDefault();
+        public IDalamudTextureWrap? GetIcon() => !PresetSheet.Statuses.TryGetValue(StatusID, out var rowData) ? null : DService.Texture.GetFromGameIcon(new(rowData.Icon)).GetWrapOrDefault();
 
-        public string? GetName() => !PresetData.Statuses.TryGetValue(StatusID, out var rowData) ? null : rowData.Name.ExtractText();
+        public string? GetName() => !PresetSheet.Statuses.TryGetValue(StatusID, out var rowData) ? null : rowData.Name.ExtractText();
 
         public bool HasStatus()
         {

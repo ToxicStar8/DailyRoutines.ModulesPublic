@@ -29,12 +29,12 @@ public class AutoInDutySelectYes : DailyModuleBase
         var currentZone = DService.ClientState.TerritoryType;
 
         DService.ClientState.TerritoryChanged += OnZoneChanged;
-        if (PresetData.Contents.ContainsKey(currentZone)) OnZoneChanged(currentZone);
+        if (PresetSheet.Contents.ContainsKey(currentZone)) OnZoneChanged(currentZone);
     }
 
     private static void OnZoneChanged(ushort zone)
     {
-        if (PresetData.Contents.ContainsKey(zone))
+        if (PresetSheet.Contents.ContainsKey(zone))
             DService.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, "SelectYesno", OnAddonSelectYesno);
         else
             DService.AddonLifecycle.UnregisterListener(OnAddonSelectYesno);

@@ -1,5 +1,4 @@
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using System.Collections.Generic;
@@ -42,7 +41,7 @@ public class AutoTankStance : DailyModuleBase
 
         TaskHelper ??= new TaskHelper { AbortOnTimeout = true, TimeLimitMS = 30000, ShowDebug = false };
 
-        ContentsWithOneTank ??= PresetData.Contents
+        ContentsWithOneTank ??= PresetSheet.Contents
                                           .Where(x => (uint)x.Value.ContentMemberType.Value.TanksPerParty == 1)
                                           .Select(x => x.Key)
                                           .ToHashSet();
@@ -64,7 +63,7 @@ public class AutoTankStance : DailyModuleBase
     {
         if (!IsValidPVEDuty()) return;
         if ((ConfigOnlyAutoStanceWhenOneTank && ContentsWithOneTank.Contains(zone)) ||
-            (!ConfigOnlyAutoStanceWhenOneTank && PresetData.Contents.ContainsKey(zone)))
+            (!ConfigOnlyAutoStanceWhenOneTank && PresetSheet.Contents.ContainsKey(zone)))
         {
             TaskHelper.Abort();
             TaskHelper.DelayNext(1000);
@@ -103,7 +102,7 @@ public class AutoTankStance : DailyModuleBase
     {
         HashSet<uint> InvalidContentTypes = [16, 17, 18, 19, 31, 32, 34, 35];
 
-        return PresetData.Contents.TryGetValue(DService.ClientState.TerritoryType, out var zoneData) &&
+        return PresetSheet.Contents.TryGetValue(DService.ClientState.TerritoryType, out var zoneData) &&
                !DService.ClientState.IsPvP && !zoneData.PvP && !InvalidContentTypes.Contains(zoneData.ContentType.RowId);
     }
 

@@ -241,7 +241,7 @@ public class AutoOpenMapLinks : DailyModuleBase
                 null or "LookingForGroup" or "PartyMemberList" or "FriendList" or "FreeCompany" or "SocialList"
                     or "ContactList" or "ChatLog" or "_PartyList" or "LinkShell" or "CrossWorldLinkshell"
                     or "ContentMemberList" or "BeginnerChatList" or "CircleBook" =>
-                    target.TargetName != string.Empty && PresetData.Worlds.ContainsKey(target.TargetHomeWorld.RowId),
+                    target.TargetName != string.Empty && PresetSheet.Worlds.ContainsKey(target.TargetHomeWorld.RowId),
                 "BlackList" or "MuteList" => false,
                 _ => false
             };

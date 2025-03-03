@@ -1,15 +1,14 @@
-using System;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Text;
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using DailyRoutines.Managers;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.Gui.Dtr;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.UI.Info;
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Text;
 
 namespace DailyRoutines.Modules;
 
@@ -42,7 +41,7 @@ public unsafe class AutoCountBlacklisted : DailyModuleBase
         InfoProxyBlackListUpdateHook.Enable();
 
         DtrEntry ??= DService.DtrBar.Get("DailyRoutines-AutoCountBlacklisted");
-        if (DtrEntry != null) DtrEntry.Shown = true;
+        DtrEntry.Shown = true;
 
         FrameworkManager.Register(false, OnUpdate);
     }
@@ -107,7 +106,7 @@ public unsafe class AutoCountBlacklisted : DailyModuleBase
         var checkRange = ModuleConfig.CheckRange * ModuleConfig.CheckRange;
         foreach (var obj in DService.ObjectTable)
         {
-            if (obj is not null && obj.ObjectKind is ObjectKind.Player)
+            if (obj.ObjectKind is ObjectKind.Player)
             {
                 var needCheckPos = obj.Position;
                 if (Vector3.DistanceSquared(myPos, needCheckPos) <= checkRange)
@@ -115,7 +114,7 @@ public unsafe class AutoCountBlacklisted : DailyModuleBase
                     var chara = obj.ToBCStruct();
                     if (chara is null) continue;
 
-                    if (!PresetData.Worlds.TryGetValue(chara->HomeWorld, out var world)) continue;
+                    if (!PresetSheet.Worlds.TryGetValue(chara->HomeWorld, out var world)) continue;
 
                     // Character.Id = accountId for new, contentId for old
                     if (BlacklistHashSet.Contains(chara->Character.ContentId) || BlacklistHashSet.Contains(chara->Character.AccountId))

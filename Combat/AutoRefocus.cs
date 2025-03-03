@@ -1,5 +1,4 @@
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using DailyRoutines.Managers;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
@@ -38,7 +37,7 @@ public unsafe class AutoRefocus : DailyModuleBase
     private static void OnZoneChange(ushort territory)
     {
         FocusTarget = 0;
-        IsNeedToRefocus = PresetData.Contents.ContainsKey(territory);
+        IsNeedToRefocus = PresetSheet.Contents.ContainsKey(territory);
     }
 
     private static void OnUpdate(IFramework framework)

@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using DailyRoutines.Managers;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using Dalamud.Game.ClientState.Conditions;
@@ -66,7 +65,7 @@ public class AutoDrawMotifs : DailyModuleBase
     private void OnZoneChanged(ushort zone)
     {
         TaskHelper.Abort();
-        if (!PresetData.Contents.ContainsKey(zone)) return;
+        if (!PresetSheet.Contents.ContainsKey(zone)) return;
         TaskHelper.Enqueue(CheckCurrentJob);
     }
 

@@ -1,5 +1,4 @@
 using DailyRoutines.Abstracts;
-using DailyRoutines.Infos;
 using DailyRoutines.Managers;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Text.SeStringHandling;
@@ -89,7 +88,7 @@ public class BetterStatusTimeDisplay : DailyModuleBase
             var text = SeString.Parse(stringArray->StringArray[37 + i]).TextValue;
             if (string.IsNullOrEmpty(text)) continue;
 
-            var id = PresetData.Statuses.FirstOrDefault(x => x.Value.Name == text.Split("\n")[0]).Key;
+            var id = PresetSheet.Statuses.FirstOrDefault(x => x.Value.Name == text.Split("\n")[0]).Key;
 
             if (id == 0)
             {

@@ -46,7 +46,8 @@ public unsafe class AutoPlayerCommend : DailyModuleBase
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(300f * GlobalFontScale);
-        ContentSelectCombo(ref ModuleConfig.BlacklistContentZones, ref ContentSearchInput);
+        if (ContentSelectCombo(ref ModuleConfig.BlacklistContentZones, ref ContentSearchInput))
+            SaveConfig(ModuleConfig);
         
         ImGui.Spacing();
         
@@ -54,7 +55,8 @@ public unsafe class AutoPlayerCommend : DailyModuleBase
         ImGui.TextColored(LightSkyBlue, $"{GetLoc("AutoPlayerCommend-BlockBlacklistPlayers")}:");
         
         ImGui.SameLine();
-        ImGui.Checkbox("###AutoIgnoreBlacklistPlayers", ref ModuleConfig.AutoIgnoreBlacklistPlayers);
+        if (ImGui.Checkbox("###AutoIgnoreBlacklistPlayers", ref ModuleConfig.AutoIgnoreBlacklistPlayers))
+            SaveConfig(ModuleConfig);
     }
     
     private void OnZoneChanged(ushort zone) => AssignedCommendationContentID = 0;
@@ -228,7 +230,7 @@ public unsafe class AutoPlayerCommend : DailyModuleBase
 
     private class Config : ModuleConfiguration
     {
-        public HashSet<uint>    BlacklistContentZones    = [];
+        public HashSet<uint> BlacklistContentZones = [];
 
         public bool AutoIgnoreBlacklistPlayers = true;
     }
