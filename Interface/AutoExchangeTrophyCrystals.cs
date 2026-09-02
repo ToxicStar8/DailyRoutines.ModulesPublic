@@ -7,8 +7,6 @@ using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.ClientState.Objects.Enums;
 using FFXIVClientStructs.FFXIV.Client.UI;
-using FFXIVClientStructs.FFXIV.Component.GUI;
-using Lumina.Excel.Sheets;
 using OmenTools.Dalamud;
 using OmenTools.Info.Game.Data;
 using OmenTools.Info.Game.ItemSource;
@@ -17,7 +15,6 @@ using OmenTools.Interop.Game.AddonEvent;
 using OmenTools.Interop.Game.Lumina;
 using OmenTools.OmenService;
 using OmenTools.Threading;
-using OmenTools.Threading.TaskHelper.Enums;
 
 namespace DailyRoutines.ModulesPublic.Interface;
 
@@ -33,32 +30,41 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
 
     private Config config = null!;
 
-    private List<ExchangeItem> availableItems = [];
+    private List<ExchangeItem>             availableItems     = [];
     private Dictionary<uint, ExchangeItem> availableItemsByID = [];
 
     private uint selectedItemID;
-    private int selectedAmount = 1;
+    private int  amountInput = 1;
 
     private bool waitingForPurchase;
     private uint expectedCurrencyAfterPurchase;
-    private string pendingItemName = string.Empty;
 
     protected override void Init()
     {
-        config                 =   Config.Load(this) ?? new();
-        TaskHelper             ??= new() { TimeoutMS = 30_000 };
-        DService.Instance().AddonLifecycle.RegisterListener(AddonEvent.PostSetup, ["SelectYesno", "ShopExchangeItemDialog", "ShopExchangeCurrencyDialog"], OnConfirmAddon);
+        config     =   Config.Load(this) ?? new();
+        TaskHelper ??= new()
+        {
+            TimeoutMS       = 30_000,
+            TimeoutAction   = ResetState,
+            ExceptionAction = ResetState
+        };
+
+        DService.Instance().AddonLifecycle.RegisterListener
+        (
+            AddonEvent.PostSetup,
+            ["SelectYesno", "ShopExchangeItemDialog", "ShopExchangeCurrencyDialog"],
+            OnConfirmAddon
+        );
         LoadAvailableItems();
     }
 
     protected override void Uninit()
     {
         DService.Instance().AddonLifecycle.UnregisterListener(OnConfirmAddon);
-        Abort();
+        if (TaskHelper.IsBusy)
+            Abort();
         config.Save(this);
     }
-
-    #region 配置界面
 
     protected override void ConfigUI()
     {
@@ -68,11 +74,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         ImGuiOm.ConflictKeyText();
         ImGui.Spacing();
 
-        ImGui.TextColored
-        (
-            KnownColor.LightSkyBlue.ToVector4(),
-            $"{GetTrophyCrystalName()}: {GetTrophyCrystalCount():N0}"
-        );
+        ImGui.TextColored(KnownColor.LightSkyBlue.ToVector4(), $"{LuminaWrapper.GetItemName(TROPHY_CRYSTAL_ITEM_ID)}: {GetTrophyCrystalCount():N0}");
 
         if (TaskHelper.IsBusy)
             ImGui.TextUnformatted($"{Lang.Get("Status")}: {TaskHelper.CurrentTaskName}");
@@ -80,11 +82,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         if (availableItems.Count == 0)
         {
             ImGui.Spacing();
-            ImGui.TextColored
-            (
-                KnownColor.OrangeRed.ToVector4(),
-                Lang.Get("Loading")
-            );
+            ImGui.TextDisabled(Lang.Get("Loading"));
         }
 
         ImGui.Spacing();
@@ -92,12 +90,18 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         using (ImRaii.Disabled(TaskHelper.IsBusy || availableItems.Count == 0))
         {
             DrawItemSelector();
-            DrawPresetTable();
+            DrawExchangeList();
         }
 
         ImGui.Spacing();
 
-        using (ImRaii.Disabled(TaskHelper.IsBusy || config.Requests.Count == 0 || availableItems.Count == 0))
+        using (ImRaii.Disabled
+               (
+                   TaskHelper.IsBusy                  ||
+                   config.Requests.Count == 0         ||
+                   availableItems.Count == 0          ||
+                   !vnavmeshIPC.IsPluginEnabled()
+               ))
         {
             if (ImGuiOm.ButtonIconWithText(FontAwesomeIcon.Play, Lang.Get("Start")))
                 Start();
@@ -114,11 +118,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         if (!vnavmeshIPC.IsPluginEnabled())
         {
             ImGui.Spacing();
-            ImGui.TextColored
-            (
-                KnownColor.OrangeRed.ToVector4(),
-                $"{Lang.Get("PluginPrerequisite")}: vnavmesh"
-            );
+            ImGui.TextColored(KnownColor.OrangeRed.ToVector4(), $"{Lang.Get("PluginPrerequisite")}: vnavmesh");
         }
     }
 
@@ -133,69 +133,77 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
                           $"{selected.ItemName} ({selected.ShopName})" :
                           Lang.Get("PleaseSelect");
 
-        if (ImGui.BeginCombo("###TrophyCrystalItem", preview))
+        using (var combo = ImRaii.Combo("###TrophyCrystalItem", preview))
         {
-            foreach (var item in availableItems)
+            if (combo)
             {
-                var isSelected = item.ItemID == selectedItemID;
-                if (ImGui.Selectable($"{item.ItemName} | {item.ShopName} | {item.Cost:N0}###Item_{item.ItemID}", isSelected))
-                    selectedItemID = item.ItemID;
+                foreach (var item in availableItems)
+                {
+                    var isSelected = item.ItemID == selectedItemID;
+                    if (ImGui.Selectable($"{item.ItemName} | {item.ShopName} | {item.Cost:N0}###Item_{item.ItemID}", isSelected))
+                        selectedItemID = item.ItemID;
 
-                if (isSelected)
-                    ImGui.SetItemDefaultFocus();
+                    if (isSelected)
+                        ImGui.SetItemDefaultFocus();
+                }
             }
-
-            ImGui.EndCombo();
         }
 
         ImGui.SameLine();
         ImGui.SetNextItemWidth(90f * GlobalUIScale);
-        if (ImGui.InputInt("###TrophyCrystalItemAmount", ref selectedAmount))
-            selectedAmount = Math.Clamp(selectedAmount, 1, 999);
+        if (ImGui.InputInt("###TrophyCrystalItemAmount", ref amountInput))
+            amountInput = Math.Clamp(amountInput, 1, 999);
 
         ImGui.SameLine();
         using (ImRaii.Disabled(selectedItemID == 0))
         {
-            if (!ImGuiOm.ButtonIconWithText(FontAwesomeIcon.Plus, Lang.Get("Add"))) return;
+            if (ImGuiOm.ButtonIconWithText(FontAwesomeIcon.Plus, Lang.Get("Add")))
+            {
+                var request = config.Requests.FirstOrDefault(x => x.ItemID == selectedItemID);
+                if (request == null)
+                    config.Requests.Add(new() { ItemID = selectedItemID, Amount = amountInput });
+                else
+                    request.Amount = Math.Clamp(request.Amount + amountInput, 1, 999);
 
-            var request = config.Requests.FirstOrDefault(x => x.ItemID == selectedItemID);
-            if (request == null)
-                config.Requests.Add(new() { ItemID = selectedItemID, Amount = selectedAmount });
-            else
-                request.Amount = Math.Clamp(request.Amount + selectedAmount, 1, 999);
-
-            config.Save(this);
+                config.Save(this);
+            }
         }
     }
 
-    private void DrawPresetTable()
+    private void DrawExchangeList()
     {
         ImGui.Spacing();
 
+        using var table = ImRaii.Table("TrophyCrystalExchangeList", 3);
+        if (!table) return;
+
+        ImGui.TableSetupColumn(Lang.Get("Item"),      ImGuiTableColumnFlags.WidthStretch, 30);
+        ImGui.TableSetupColumn(Lang.Get("Amount"),    ImGuiTableColumnFlags.WidthFixed,   90f * GlobalUIScale);
+        ImGui.TableSetupColumn(Lang.Get("Operation"), ImGuiTableColumnFlags.None,         10);
+        ImGui.TableHeadersRow();
+
+        var currency = GetTrophyCrystalCount();
         foreach (var request in config.Requests.ToList())
         {
-            ImGui.PushID((int)request.ItemID);
+            using var id = ImRaii.PushId((int)request.ItemID);
 
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
             if (availableItemsByID.TryGetValue(request.ItemID, out var item))
                 ImGui.TextUnformatted($"{item.ItemName} | {item.Cost:N0}");
             else
-                ImGui.TextColored
-                (
-                    KnownColor.OrangeRed.ToVector4(),
-                    $"{Lang.Get("Unknown")} ({request.ItemID})"
-                );
+                ImGui.TextColored(KnownColor.OrangeRed.ToVector4(), $"{Lang.Get("Unknown")} ({request.ItemID})");
 
-            ImGui.SameLine();
-            ImGui.SetNextItemWidth(90f * GlobalUIScale);
+            ImGui.TableNextColumn();
+            ImGui.SetNextItemWidth(-1f);
             if (ImGui.InputInt("###Amount", ref request.Amount))
-            {
                 request.Amount = Math.Clamp(request.Amount, 1, 999);
+            if (ImGui.IsItemDeactivatedAfterEdit())
                 config.Save(this);
-            }
 
-            ImGui.SameLine();
+            ImGui.TableNextColumn();
             var maximum = item is { Cost: > 0 } ?
-                              (int)Math.Min(999U, GetTrophyCrystalCount() / item.Cost) :
+                              (int)Math.Min(999U, currency / item.Cost) :
                               0;
             using (ImRaii.Disabled(maximum == 0))
             {
@@ -212,28 +220,23 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
                 config.Requests.Remove(request);
                 config.Save(this);
             }
-
-            ImGui.PopID();
         }
     }
 
-    #endregion
-
-    #region 流程
-
-    // 整体流程：检查预设和余额 → 传送 → 寻路 → 按商店分类逐项兑换 → 退出商店。
     private void Start()
     {
         if (TaskHelper.IsBusy) return;
         if (DService.Instance().ObjectTable.LocalPlayer == null) return;
         if (DService.Instance().Condition.IsOccupiedInEvent) return;
+
         if (!vnavmeshIPC.IsPluginEnabled())
         {
             NotifyHelper.Instance().NotificationError($"{Lang.Get("PluginPrerequisite")}: vnavmesh");
             return;
         }
+
         if (config.Requests.Count == 0 ||
-            config.Requests.Any(x => x.Amount <= 0 || !availableItemsByID.ContainsKey(x.ItemID)))
+            config.Requests.Any(x => x.Amount is <= 0 or > 999 || !availableItemsByID.ContainsKey(x.ItemID)))
         {
             NotifyHelper.Instance().NotificationError(Lang.Get("AutoExchangeTrophyCrystals-Error-InvalidPreset"));
             return;
@@ -243,9 +246,8 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
                              .Select(x => (Item: availableItemsByID[x.ItemID], x.Amount))
                              .ToList();
 
-        // 出发前算好全部商品的总价，避免跑到兑换员面前才发现水晶不够。
         var totalCost = requests.Aggregate(0UL, (sum, x) => sum + (ulong)x.Item.Cost * (uint)x.Amount);
-        var currency = GetTrophyCrystalCount();
+        var currency  = GetTrophyCrystalCount();
         if (currency < totalCost)
         {
             NotifyHelper.Instance().NotificationError
@@ -255,71 +257,76 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
             return;
         }
 
-        TaskHelper.Abort();
-        vnavmeshIPC.StopPathfind();
-        waitingForPurchase = false;
-        pendingItemName = string.Empty;
+        ResetState();
 
         var travelTaskName = $"{Lang.Get("Teleport")} / {Lang.Get("Pathfind")}";
 
         if (GameState.TerritoryType != TARGET_TERRITORY_ID)
-            Enqueue(TeleportToWolvesDen, travelTaskName);
+        {
+            TaskHelper.Enqueue
+            (
+                () =>
+                {
+                    if (AbortOnConflict()) return true;
 
-        Enqueue
+                    return AetheryteRecordManager.Instance().GetNearestAetheryte
+                           (
+                               TARGET_TERRITORY_ID,
+                               QuartermasterPosition,
+                               excludeAethernet: true
+                           )?.TeleportTo() == true;
+                },
+                travelTaskName
+            );
+        }
+
+        TaskHelper.Enqueue
         (
-            () => GameState.TerritoryType == TARGET_TERRITORY_ID &&
-                  UIModule.IsScreenReady() &&
-                  !DService.Instance().Condition.IsBetweenAreas &&
-                  vnavmeshIPC.GetIsNavReady(),
-            travelTaskName,
-            120_000
-        );
-        Enqueue(StartNavigation, travelTaskName);
-        Enqueue(WaitForArrival, travelTaskName);
+            () =>
+            {
+                if (AbortOnConflict()) return true;
 
-        // 商品按商店分类分组，打开一个分类后一次买完这个分类里的全部预设商品。
+                return GameState.TerritoryType == TARGET_TERRITORY_ID && UIModule.IsScreenReady();
+            },
+            travelTaskName,
+            timeoutMS: 120_000
+        );
+        TaskHelper.Enqueue(StartNavigation, travelTaskName);
+        TaskHelper.Enqueue(WaitForArrival, travelTaskName);
+
         foreach (var group in requests.GroupBy(x => x.Item.ShopName))
         {
-            var shop = group.First().Item;
-            var shopTaskName = $"{Lang.Get("Exchange")}: {shop.ShopName}";
+            var shopName     = group.Key;
+            var shopTaskName = $"{Lang.Get("Exchange")}: {shopName}";
 
-            Enqueue(OpenCategoryMenu, shopTaskName);
-            Enqueue(() => SelectShop(shop), shopTaskName);
-            Enqueue(() => ShopExchangeCurrency->IsAddonAndNodesReady(), shopTaskName);
+            TaskHelper.Enqueue(OpenCategoryMenu, shopTaskName);
+            TaskHelper.Enqueue(() => SelectShop(shopName), shopTaskName);
+            TaskHelper.Enqueue
+            (
+                () =>
+                {
+                    if (AbortOnConflict()) return true;
+
+                    return ShopExchangeCurrency->IsAddonAndNodesReady();
+                },
+                shopTaskName
+            );
 
             foreach (var request in group)
             {
                 var purchaseTaskName = $"{Lang.Get("Exchange")}: {request.Item.ItemName} x{request.Amount}";
-                Enqueue
-                (
-                    () => BeginPurchase(request.Item, request.Amount),
-                    purchaseTaskName
-                );
-                Enqueue(WaitForPurchase, purchaseTaskName);
+                TaskHelper.Enqueue(() => BeginPurchase(request.Item, request.Amount), purchaseTaskName);
+                TaskHelper.Enqueue(() => WaitForPurchase(request.Item.ItemName), purchaseTaskName);
             }
-
         }
 
-        Enqueue(Finish, $"{Lang.Get("Close")} {Lang.Get("Exchange")}");
-    }
-
-    private bool TeleportToWolvesDen()
-    {
-        var aetheryte = AetheryteRecordManager.Instance().GetNearestAetheryte
-        (
-            TARGET_TERRITORY_ID,
-            QuartermasterPosition,
-            excludeAethernet: true
-        );
-        if (aetheryte != null)
-            return aetheryte.TeleportTo();
-
-        Abort(Lang.Get("AutoExchangeTrophyCrystals-Error-AetheryteNotUnlocked"));
-        return true;
+        TaskHelper.Enqueue(Finish, $"{Lang.Get("Close")} {Lang.Get("Exchange")}");
     }
 
     private bool StartNavigation()
     {
+        if (AbortOnConflict()) return true;
+
         var targetPosition = FindQuartermaster()?.Position ?? QuartermasterPosition;
         return LocalPlayerState.DistanceTo3DSquared(targetPosition) <= INTERACT_DISTANCE_SQUARED ||
                vnavmeshIPC.PathfindAndMoveToClosely(targetPosition, false, 0.1f);
@@ -327,6 +334,8 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
 
     private bool WaitForArrival()
     {
+        if (AbortOnConflict()) return true;
+
         var targetPosition = FindQuartermaster()?.Position ?? QuartermasterPosition;
         if (LocalPlayerState.DistanceTo3DSquared(targetPosition) <= INTERACT_DISTANCE_SQUARED)
         {
@@ -346,12 +355,17 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
 
     private bool OpenCategoryMenu()
     {
+        if (AbortOnConflict()) return true;
+
         if (SelectIconString->IsAddonAndNodesReady())
+        {
+            vnavmeshIPC.StopPathfind();
             return true;
+        }
 
         if (ShopExchangeCurrency->IsAddonAndNodesReady())
         {
-            // 先退出当前商品列表，游戏才会重新显示分类菜单供下一轮选择。
+            // 退出商品列表，重新选择分类。
             ShopExchangeCurrency->Callback(-1);
             return false;
         }
@@ -359,86 +373,110 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         if (DService.Instance().Condition.IsOccupiedInEvent)
             return false;
 
-        var quartermaster = FindQuartermaster();
-        if (quartermaster == null)
-            return false;
+        if (FindQuartermaster() is not { } quartermaster) return false;
 
         if (LocalPlayerState.DistanceTo3DSquared(quartermaster.Position) > INTERACT_DISTANCE_SQUARED)
         {
-            if (Throttler.Shared.Throttle("AutoExchangeTrophyCrystals-ApproachNPC", 1_000))
+            var isNavigating = vnavmeshIPC.GetIsPathfindRunning() ||
+                               vnavmeshIPC.GetIsPathfindInProgress() ||
+                               vnavmeshIPC.GetIsNavPathfindInProgress();
+
+            if (!isNavigating && Throttler.Shared.Throttle("AutoExchangeTrophyCrystals-ApproachNPC", 1_000))
                 vnavmeshIPC.PathfindAndMoveToClosely(quartermaster.Position, false, 0.1f);
             return false;
         }
 
+        vnavmeshIPC.StopPathfind();
         if (Throttler.Shared.Throttle("AutoExchangeTrophyCrystals-Interact", 1_000))
             quartermaster.TargetInteract();
 
         return false;
     }
 
-    private static bool SelectShop
+    private bool SelectShop
     (
-        ExchangeItem shop
-    ) => SelectIconString->IsAddonAndNodesReady() && AddonSelectIconStringEvent.Select(shop.ShopName);
+        string shopName
+    )
+    {
+        if (AbortOnConflict()) return true;
+
+        return AddonSelectIconStringEvent.Select(shopName);
+    }
 
     private bool BeginPurchase
     (
         ExchangeItem item,
-        int amount
+        int          amount
     )
     {
-        var entry = FindShopEntry(item.ItemID);
-        if (entry == null)
-            return false;
+        if (AbortOnConflict()) return true;
 
-        if (entry.Value.Cost != item.Cost)
+        if (FindShopEntry(item.ItemID) is not { } entry) return false;
+
+        if (entry.Cost != item.Cost)
         {
-            Abort(Lang.Get("AutoExchangeTrophyCrystals-Error-ExchangeStateChanged", item.ItemName));
+            NotifyHelper.Instance().NotificationError
+            (
+                Lang.Get("AutoExchangeTrophyCrystals-Error-ExchangeStateChanged", item.ItemName)
+            );
+            Abort();
             return true;
         }
 
         var currency = GetTrophyCrystalCount();
-        var required = (ulong)entry.Value.Cost * (uint)amount;
+        var required = (ulong)entry.Cost * (uint)amount;
         if (required > currency)
         {
-            Abort(Lang.Get("AutoExchangeTrophyCrystals-Error-InsufficientCurrency", required, currency));
+            NotifyHelper.Instance().NotificationError
+            (
+                Lang.Get("AutoExchangeTrophyCrystals-Error-InsufficientCurrency", required, currency)
+            );
+            Abort();
             return true;
         }
 
         expectedCurrencyAfterPurchase = currency - (uint)required;
-        pendingItemName = item.ItemName;
         waitingForPurchase = true;
 
-        // 向商店界面发送“购买指定商品、指定数量”的操作。
-        ShopExchangeCurrency->Callback(0, entry.Value.CallbackIndex, amount);
+        ShopExchangeCurrency->Callback(0, entry.CallbackIndex, amount);
         return true;
     }
 
-    private bool WaitForPurchase()
+    private bool WaitForPurchase
+    (
+        string itemName
+    )
     {
-        if (!waitingForPurchase)
-            return true;
+        if (AbortOnConflict()) return true;
+        if (!waitingForPurchase) return true;
 
-        // 水晶必须准确减少本次价格；少扣或多扣都说明兑换结果与预期不一致。
         var currency = GetTrophyCrystalCount();
-        if (currency > expectedCurrencyAfterPurchase || AnyConfirmationAddonReady())
+        if (IsAnyConfirmationAddonReady())
             return false;
 
-        if (currency < expectedCurrencyAfterPurchase)
+        if (currency == expectedCurrencyAfterPurchase)
         {
-            Abort(Lang.Get("AutoExchangeTrophyCrystals-Error-ExchangeStateChanged", pendingItemName));
+            waitingForPurchase = false;
             return true;
         }
 
-        waitingForPurchase = false;
-        pendingItemName = string.Empty;
-        return true;
+        if (currency < expectedCurrencyAfterPurchase)
+        {
+            NotifyHelper.Instance().NotificationError
+            (
+                Lang.Get("AutoExchangeTrophyCrystals-Error-ExchangeStateChanged", itemName)
+            );
+            Abort();
+            return true;
+        }
+
+        return false;
     }
 
     private void OnConfirmAddon
     (
         AddonEvent type,
-        AddonArgs args
+        AddonArgs  args
     )
     {
         if (!TaskHelper.IsBusy || !waitingForPurchase || args.Addon == nint.Zero)
@@ -447,8 +485,8 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         switch (args.AddonName)
         {
             case "SelectYesno":
-                // 二次确认不显示目标物品名，只显示用于支付的战利水晶。
-                AddonSelectYesnoEvent.ClickYes(GetTrophyCrystalName());
+                // 该确认框没有物品名，只能用战利水晶限制自动确认范围。
+                AddonSelectYesnoEvent.ClickYes(LuminaWrapper.GetItemName(TROPHY_CRYSTAL_ITEM_ID));
                 break;
 
             case "ShopExchangeItemDialog":
@@ -456,14 +494,15 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
                 break;
 
             case "ShopExchangeCurrencyDialog":
-                var button = args.Addon.ToStruct()->GetComponentButtonById(17);
-                if (button != null)
-                    button->Click();
+                // 组件 17 是兑换数量确认窗口里的“确定”按钮。
+                var confirmButton = args.Addon.ToStruct()->GetComponentButtonById(17);
+                if (confirmButton != null)
+                    confirmButton->Click();
                 break;
         }
     }
 
-    private static ShopEntry? FindShopEntry
+    private static (uint CallbackIndex, uint Cost)? FindShopEntry
     (
         uint itemID
     )
@@ -472,42 +511,32 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         if (!addon->IsAddonAndNodesReady() || addon->AtkValuesCount <= SHOP_CALLBACK_INDEX_OFFSET)
             return null;
 
-        if (addon->AtkValues[4].Type != AtkValueType.UInt)
-            return null;
-
-        // 从商店界面的内部数据中逐行匹配商品，同时取得当前价格和购买操作编号。
+        // 价格、物品 ID、购买回调序号使用相同的商品下标。
         var itemCount = (int)addon->AtkValues[4].UInt;
         for (var index = 0; index < itemCount; index++)
         {
-            var itemOffset = SHOP_ITEM_ID_OFFSET + index;
-            var costOffset = SHOP_COST_OFFSET + index;
-            var callbackOffset = SHOP_CALLBACK_INDEX_OFFSET + index;
-            if (callbackOffset >= addon->AtkValuesCount)
-                break;
+            if (SHOP_CALLBACK_INDEX_OFFSET + index >= addon->AtkValuesCount) break;
+            if (addon->AtkValues[SHOP_ITEM_ID_OFFSET + index].UInt != itemID) continue;
 
-            if (addon->AtkValues[itemOffset].Type != AtkValueType.UInt ||
-                addon->AtkValues[costOffset].Type != AtkValueType.UInt ||
-                addon->AtkValues[callbackOffset].Type != AtkValueType.UInt ||
-                addon->AtkValues[itemOffset].UInt != itemID)
-                continue;
+            var callbackIndex = addon->AtkValues[SHOP_CALLBACK_INDEX_OFFSET + index].UInt;
+            var cost          = addon->AtkValues[SHOP_COST_OFFSET + index].UInt;
+            if (callbackIndex >= (uint)itemCount || cost == 0) return null;
 
-            var cost = addon->AtkValues[costOffset].UInt;
-            var callbackIndex = addon->AtkValues[callbackOffset].UInt;
-            if (cost > 0 && callbackIndex < itemCount)
-                return new(callbackIndex, cost);
+            return (callbackIndex, cost);
         }
 
         return null;
     }
 
-    private static bool AnyConfirmationAddonReady() =>
+    private static bool IsAnyConfirmationAddonReady() =>
         SelectYesno->IsAddonAndNodesReady() ||
         ShopExchangeItemDialog->IsAddonAndNodesReady() ||
         ShopExchangeCurrencyDialog->IsAddonAndNodesReady();
 
-    // 商品列表和分类菜单会分两层关闭，确认角色完全退出交互后才报告完成。
     private bool Finish()
     {
+        if (AbortOnConflict()) return true;
+
         if (ShopExchangeCurrency->IsAddonAndNodesReady())
         {
             ShopExchangeCurrency->Callback(-1);
@@ -523,74 +552,52 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         if (DService.Instance().Condition.IsOccupiedInEvent)
             return false;
 
-        vnavmeshIPC.StopPathfind();
-        waitingForPurchase = false;
-        pendingItemName = string.Empty;
+        ResetState();
         NotifyHelper.Instance().NotificationSuccess($"{Info.Title}: {Lang.Get("Finished")}");
         return true;
     }
 
-    private void Enqueue
-    (
-        Func<bool> task,
-        string name,
-        int timeoutMS = 30_000
-    ) => TaskHelper.Enqueue
-    (
-        () =>
-        {
-            if (TaskHelper.AbortByConflictKey(this))
-            {
-                Abort(abortTasks: false);
-                return true;
-            }
-
-            return task();
-        },
-        name,
-        timeoutMS: timeoutMS
-    );
-
-    private void Abort
-    (
-        string? error = null,
-        bool abortTasks = true
-    )
+    private bool AbortOnConflict()
     {
-        if (abortTasks)
-            TaskHelper?.Abort();
+        if (!TaskHelper.AbortByConflictKey(this)) return false;
 
-        vnavmeshIPC.StopPathfind();
-        waitingForPurchase = false;
-        pendingItemName = string.Empty;
-
-        if (!string.IsNullOrEmpty(error))
-            NotifyHelper.Instance().NotificationError(error);
+        ResetState();
+        return true;
     }
 
-    #endregion
+    private void Abort()
+    {
+        TaskHelper.Abort();
+        ResetState();
+    }
 
-    #region 工具
+    private void ResetState()
+    {
+        vnavmeshIPC.StopPathfind();
+        waitingForPurchase = false;
+    }
 
     private void LoadAvailableItems()
     {
-        // 从 OmenTools 获取所有使用战利水晶购买的商品，只保留这名兑换员出售的内容。
         var result = ItemSourceInfo.QueryExchangeItems(TROPHY_CRYSTAL_ITEM_ID);
         if (result is not { State: ItemSourceQueryState.Ready, Data: { } data })
             return;
 
         List<ExchangeItem> items = [];
         foreach (var item in data.Items)
-        foreach (var npc in item.NPCInfos.Where(x => x.ID == QUARTERMASTER_DATA_ID))
-        foreach (var cost in npc.CostInfos.Where(x => x.ItemID == TROPHY_CRYSTAL_ITEM_ID && x.Cost > 0))
         {
-            if (!string.IsNullOrWhiteSpace(npc.ShopName))
-                items.Add(new(item.ItemID, npc.ShopName, item.GetItemName(), cost.Cost));
+            foreach (var npc in item.NPCInfos.Where(x => x.ID == QUARTERMASTER_DATA_ID))
+            {
+                foreach (var cost in npc.CostInfos.Where(x => x.ItemID == TROPHY_CRYSTAL_ITEM_ID && x.Cost > 0))
+                {
+                    if (!string.IsNullOrWhiteSpace(npc.ShopName))
+                        items.Add(new(item.ItemID, npc.ShopName, item.GetItemName(), cost.Cost));
+                }
+            }
         }
 
         availableItems = items
-                             .GroupBy(x => x.ItemID)
-                             .Select(x => x.First())
+                             .DistinctBy(x => x.ItemID)
                              .OrderBy(x => x.ShopName)
                              .ThenBy(x => x.ItemName)
                              .ToList();
@@ -602,20 +609,13 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
 
     private static uint GetTrophyCrystalCount() => LocalPlayerState.GetItemCount(TROPHY_CRYSTAL_ITEM_ID);
 
-    private static string GetTrophyCrystalName() =>
-        LuminaGetter.GetRowOrDefault<Item>(TROPHY_CRYSTAL_ITEM_ID).Name.ToString();
-
     private static IGameObject? FindQuartermaster() =>
         DService.Instance().ObjectTable.FirstOrDefault
         (
             x => x.ObjectKind == ObjectKind.EventNpc && x.DataID == QUARTERMASTER_DATA_ID
         );
 
-    #endregion
-
-    #region 数据
-
-    private sealed class Config : ModuleConfig
+    private class Config : ModuleConfig
     {
         public List<ExchangeRequest> Requests = [];
     }
@@ -623,24 +623,16 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
     private sealed class ExchangeRequest
     {
         public uint ItemID;
-        public int Amount = 1;
+        public int  Amount = 1;
     }
 
     private sealed record ExchangeItem
     (
-        uint ItemID,
+        uint   ItemID,
         string ShopName,
         string ItemName,
-        uint Cost
+        uint   Cost
     );
-
-    private readonly record struct ShopEntry
-    (
-        uint CallbackIndex,
-        uint Cost
-    );
-
-    #endregion
 
     #region 常量
 
@@ -654,8 +646,8 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
     private const uint TROPHY_CRYSTAL_ITEM_ID = 36656;
 
     // 商品、价格和购买回调序号的起始下标
-    private const int SHOP_ITEM_ID_OFFSET = 1066;
-    private const int SHOP_COST_OFFSET = 456;
+    private const int SHOP_ITEM_ID_OFFSET       = 1066;
+    private const int SHOP_COST_OFFSET          = 456;
     private const int SHOP_CALLBACK_INDEX_OFFSET = 1310;
 
     // NPC 交互距离平方（4 × 4）
