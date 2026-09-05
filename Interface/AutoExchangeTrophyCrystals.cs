@@ -292,7 +292,16 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
             timeoutMS: 120_000
         );
         TaskHelper.Enqueue(StartNavigation, travelTaskName);
-        TaskHelper.Enqueue(WaitForArrival, travelTaskName);
+        TaskHelper.Enqueue
+        (
+            () =>
+            {
+                if (AbortOnConflict()) return true;
+
+                return MoveTo(FindQuartermaster()?.Position ?? QuartermasterPosition);
+            },
+            travelTaskName
+        );
 
         foreach (var group in requests.GroupBy(x => x.Item.ShopName))
         {
@@ -334,11 +343,11 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         return vnavmeshIPC.PathfindAndMoveToClosely(targetPosition, false, 0.1f);
     }
 
-    private bool WaitForArrival()
+    private static bool MoveTo
+    (
+        Vector3 targetPosition
+    )
     {
-        if (AbortOnConflict()) return true;
-
-        var targetPosition = FindQuartermaster()?.Position ?? QuartermasterPosition;
         if (LocalPlayerState.DistanceTo3DSquared(targetPosition) <= INTERACT_DISTANCE_SQUARED)
         {
             vnavmeshIPC.StopPathfind();
@@ -376,7 +385,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
             return false;
 
         if (FindQuartermaster() is not { } quartermaster) return false;
-        if (!WaitForArrival() || !TaskHelper.IsBusy) return false;
+        if (!MoveTo(quartermaster.Position)) return false;
 
         if (Throttler.Shared.Throttle("AutoExchangeTrophyCrystals-Interact", 1_000))
             quartermaster.TargetInteract();
@@ -476,7 +485,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         switch (args.AddonName)
         {
             case "SelectYesno":
-                // 该确认框没有物品名，只能用战利水晶限制自动确认范围。
+                // 仅确认包含战利水晶名称的提示。
                 AddonSelectYesnoEvent.ClickYes(LuminaWrapper.GetItemName(TROPHY_CRYSTAL_ITEM_ID));
                 break;
 
@@ -485,7 +494,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
                 break;
 
             case "ShopExchangeCurrencyDialog":
-                // 组件 17 是兑换数量确认窗口里的“确定”按钮。
+                // 兑换数量确认按钮
                 var confirmButton = args.Addon.ToStruct()->GetComponentButtonById(17);
                 if (confirmButton != null)
                     confirmButton->Click();
