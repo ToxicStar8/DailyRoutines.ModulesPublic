@@ -481,6 +481,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
     {
         if (!TaskHelper.IsBusy || !waitingForPurchase || args.Addon == nint.Zero)
             return;
+        if (AbortOnConflict()) return;
 
         switch (args.AddonName)
         {
