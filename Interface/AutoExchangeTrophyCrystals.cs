@@ -97,9 +97,9 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
 
         using (ImRaii.Disabled
                (
-                   TaskHelper.IsBusy                  ||
-                   config.Requests.Count == 0         ||
-                   availableItems.Count == 0          ||
+                   TaskHelper.IsBusy          ||
+                   config.Requests.Count == 0 ||
+                   availableItems.Count == 0  ||
                    !vnavmeshIPC.IsPluginEnabled()
                ))
         {
@@ -328,8 +328,10 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         if (AbortOnConflict()) return true;
 
         var targetPosition = FindQuartermaster()?.Position ?? QuartermasterPosition;
-        return LocalPlayerState.DistanceTo3DSquared(targetPosition) <= INTERACT_DISTANCE_SQUARED ||
-               vnavmeshIPC.PathfindAndMoveToClosely(targetPosition, false, 0.1f);
+        if (LocalPlayerState.DistanceTo3DSquared(targetPosition) <= INTERACT_DISTANCE_SQUARED)
+            return true;
+
+        return vnavmeshIPC.PathfindAndMoveToClosely(targetPosition, false, 0.1f);
     }
 
     private bool WaitForArrival()
@@ -343,7 +345,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
             return true;
         }
 
-        var isNavigating = vnavmeshIPC.GetIsPathfindRunning() ||
+        var isNavigating = vnavmeshIPC.GetIsPathfindRunning()    ||
                            vnavmeshIPC.GetIsPathfindInProgress() ||
                            vnavmeshIPC.GetIsNavPathfindInProgress();
 
@@ -374,19 +376,8 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
             return false;
 
         if (FindQuartermaster() is not { } quartermaster) return false;
+        if (!WaitForArrival() || !TaskHelper.IsBusy) return false;
 
-        if (LocalPlayerState.DistanceTo3DSquared(quartermaster.Position) > INTERACT_DISTANCE_SQUARED)
-        {
-            var isNavigating = vnavmeshIPC.GetIsPathfindRunning() ||
-                               vnavmeshIPC.GetIsPathfindInProgress() ||
-                               vnavmeshIPC.GetIsNavPathfindInProgress();
-
-            if (!isNavigating && Throttler.Shared.Throttle("AutoExchangeTrophyCrystals-ApproachNPC", 1_000))
-                vnavmeshIPC.PathfindAndMoveToClosely(quartermaster.Position, false, 0.1f);
-            return false;
-        }
-
-        vnavmeshIPC.StopPathfind();
         if (Throttler.Shared.Throttle("AutoExchangeTrophyCrystals-Interact", 1_000))
             quartermaster.TargetInteract();
 
@@ -436,7 +427,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         }
 
         expectedCurrencyAfterPurchase = currency - (uint)required;
-        waitingForPurchase = true;
+        waitingForPurchase            = true;
 
         ShopExchangeCurrency->Callback(0, entry.CallbackIndex, amount);
         return true;
@@ -529,7 +520,7 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
     }
 
     private static bool IsAnyConfirmationAddonReady() =>
-        SelectYesno->IsAddonAndNodesReady() ||
+        SelectYesno->IsAddonAndNodesReady()            ||
         ShopExchangeItemDialog->IsAddonAndNodesReady() ||
         ShopExchangeCurrencyDialog->IsAddonAndNodesReady();
 
@@ -586,21 +577,24 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
         List<ExchangeItem> items = [];
         foreach (var item in data.Items)
         {
-            foreach (var npc in item.NPCInfos.Where(x => x.ID == QUARTERMASTER_DATA_ID))
+            foreach (var npc in item.NPCInfos)
             {
-                foreach (var cost in npc.CostInfos.Where(x => x.ItemID == TROPHY_CRYSTAL_ITEM_ID && x.Cost > 0))
+                if (npc.ID != QUARTERMASTER_DATA_ID || string.IsNullOrWhiteSpace(npc.ShopName)) continue;
+
+                foreach (var cost in npc.CostInfos)
                 {
-                    if (!string.IsNullOrWhiteSpace(npc.ShopName))
-                        items.Add(new(item.ItemID, npc.ShopName, item.GetItemName(), cost.Cost));
+                    if (cost is not { ItemID: TROPHY_CRYSTAL_ITEM_ID, Cost: > 0 }) continue;
+
+                    items.Add(new(item.ItemID, npc.ShopName, item.GetItemName(), cost.Cost));
                 }
             }
         }
 
         availableItems = items
-                             .DistinctBy(x => x.ItemID)
-                             .OrderBy(x => x.ShopName)
-                             .ThenBy(x => x.ItemName)
-                             .ToList();
+                         .DistinctBy(x => x.ItemID)
+                         .OrderBy(x => x.ShopName)
+                         .ThenBy(x => x.ItemName)
+                         .ToList();
         availableItemsByID = availableItems.ToDictionary(x => x.ItemID);
 
         if (!availableItemsByID.ContainsKey(selectedItemID))
@@ -646,8 +640,8 @@ public unsafe class AutoExchangeTrophyCrystals : ModuleBase
     private const uint TROPHY_CRYSTAL_ITEM_ID = 36656;
 
     // 商品、价格和购买回调序号的起始下标
-    private const int SHOP_ITEM_ID_OFFSET       = 1066;
-    private const int SHOP_COST_OFFSET          = 456;
+    private const int SHOP_ITEM_ID_OFFSET        = 1066;
+    private const int SHOP_COST_OFFSET           = 456;
     private const int SHOP_CALLBACK_INDEX_OFFSET = 1310;
 
     // NPC 交互距离平方（4 × 4）
